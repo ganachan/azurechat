@@ -1,12 +1,8 @@
 name: Build & deploy Next.js app to Azure Web App
 
-# When this action will be executed
 on:
-  # Automatically trigger it when detected changes in repo
   push:
     branches: [main]
-
-  # Allow manual workflow trigger
   workflow_dispatch:
 
 jobs:
@@ -28,7 +24,7 @@ jobs:
           npm install
           npm run build --if-present
           cd ..
-          
+
       - name: 📂 Copy standalone into the root
         run: cp -R ./src/.next/standalone ./site-deploy
 
@@ -42,7 +38,7 @@ jobs:
         run: |
           cd ./site-deploy
           zip Nextjs-site.zip ./* .next -qr
-          
+
       - name: 🔍 Diagnostics
         run: |
           ls ./src
@@ -83,10 +79,18 @@ jobs:
           inlineScript: |
             webapp_name="${{ secrets.AZURE_APP_SERVICE_NAME }}"
             rg=$(az webapp list --query "[?name=='$webapp_name'].resourceGroup" --output tsv)
-            echo "Setting SCM_DO_BUILD_DURING_DEPLOYMENT=false on app service $webapp_name"
+            
+            if [ -z "$rg" ]; then
+              echo "Resource group not found for web app $webapp_name"
+              exit 1
+            fi
+            
+            echo "Setting SCM_DO_BUILD_DURING_DEPLOYMENT=false on app service $webapp_name in resource group $rg"
             az webapp config appsettings set -n $webapp_name -g $rg --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false -o none
-            echo "Setting --startup-file=\"node server.js\" on app service $webapp_name"
+            
+            echo "Setting --startup-file=\"node server.js\" on app service $webapp_name in resource group $rg"
             az webapp config set --startup-file="node server.js" -n $webapp_name -g $rg -o none
+            
             sleep 10
 
       - name: 🚀 Deploy to Azure Web App
