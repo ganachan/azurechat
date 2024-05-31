@@ -1,8 +1,12 @@
 name: Build & deploy Next.js app to Azure Web App
 
+# When this action will be executed
 on:
+  # Automatically trigger it when detected changes in repo
   push:
     branches: [main]
+
+  # Allow manual workflow trigger
   workflow_dispatch:
 
 jobs:
@@ -26,19 +30,18 @@ jobs:
           cd ..
 
       - name: 📂 Copy standalone into the root
-        run: mkdir -p ./site-deploy && cp -R ./src/.next/standalone/* ./site-deploy
+        run: cp -R ./src/.next/standalone ./site-deploy
 
       - name: 📂 Copy static into the .next folder
-        run: mkdir -p ./site-deploy/.next && cp -R ./src/.next/static ./site-deploy/.next/static
+        run: cp -R ./src/.next/static ./site-deploy/.next/static
 
       - name: 📂 Copy Public folder
-        run: mkdir -p ./site-deploy/public && cp -R ./src/public/* ./site-deploy/public
+        run: cp -R ./src/public ./site-deploy/public
 
       - name: 📦 Package Next application
         run: |
           cd ./site-deploy
-          zip -r Nextjs-site.zip ./*
-          cd ..
+          zip Nextjs-site.zip ./* .next -qr
 
       - name: 🔍 Diagnostics
         run: |
@@ -59,6 +62,11 @@ jobs:
       name: Production
 
     steps:
+      - name: 🍏 Set up Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
       - name: ⬇️ Download artifact from build job
         uses: actions/download-artifact@v4
         with:
@@ -69,26 +77,16 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 🔧 Azure CLI script
+      # Set the build during deployment setting to false. This setting was added in the templates to all azd to work, but breaks deployment via webapps-deploy
+      - name: Azure CLI script
         uses: azure/CLI@v1
         with:
           inlineScript: |
-            webapp_name="${{ secrets.AZURE_APP_SERVICE_NAME }}"
-            echo "Web App Name: $webapp_name"
-            rg=$(az webapp list --query "[?name=='$webapp_name'].resourceGroup" --output tsv)
-            echo "Resource Group: $rg"
-            
-            if [ -z "$rg" ]; then
-              echo "Resource group not found for web app $webapp_name"
-              exit 1
-            fi
-            
-            echo "Setting SCM_DO_BUILD_DURING_DEPLOYMENT=false on app service $webapp_name in resource group $rg"
-            az webapp config appsettings set -n $webapp_name -g $rg --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false -o none
-            
-            echo "Setting --startup-file=\"node server.js\" on app service $webapp_name in resource group $rg"
-            az webapp config set --startup-file="node server.js" -n $webapp_name -g $rg -o none
-            
+            rg=$(az webapp list --query "[?name=='${{ secrets.AZURE_APP_SERVICE_NAME }}'].resourceGroup" --output tsv)
+            echo Setting SCM_DO_BUILD_DURING_DEPLOYMENT=false on app service ${{ secrets.AZURE_APP_SERVICE_NAME }}
+            az webapp config appsettings set -n ${{ secrets.AZURE_APP_SERVICE_NAME }} -g $rg --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false -o none
+            echo Setting --startup-file=\"node server.js\" on app service ${{ secrets.AZURE_APP_SERVICE_NAME }}
+            az webapp config set --startup-file="node server.js" -n ${{ secrets.AZURE_APP_SERVICE_NAME }} -g $rg -o none
             sleep 10
 
       - name: 🚀 Deploy to Azure Web App
@@ -96,7 +94,7 @@ jobs:
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ secrets.AZURE_APP_SERVICE_NAME }}
-          package: ./Nextjs-site.zip
+          package: ${{ github.workspace }}/Nextjs-site.zip
 
       - name: 🧹 Cleanup
-        run: rm ./Nextjs-site.zip
+        run: rm ${{ github.workspace }}/Nextjs-site.zip
