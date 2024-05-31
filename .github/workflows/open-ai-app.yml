@@ -26,18 +26,19 @@ jobs:
           cd ..
 
       - name: 📂 Copy standalone into the root
-        run: cp -R ./src/.next/standalone ./site-deploy
+        run: mkdir -p ./site-deploy && cp -R ./src/.next/standalone/* ./site-deploy
 
       - name: 📂 Copy static into the .next folder
-        run: cp -R ./src/.next/static ./site-deploy/.next/static
+        run: mkdir -p ./site-deploy/.next && cp -R ./src/.next/static ./site-deploy/.next/static
 
       - name: 📂 Copy Public folder
-        run: cp -R ./src/public ./site-deploy/public
+        run: mkdir -p ./site-deploy/public && cp -R ./src/public/* ./site-deploy/public
 
       - name: 📦 Package Next application
         run: |
           cd ./site-deploy
-          zip Nextjs-site.zip ./* .next -qr
+          zip -r Nextjs-site.zip ./*
+          cd ..
 
       - name: 🔍 Diagnostics
         run: |
@@ -58,11 +59,6 @@ jobs:
       name: Production
 
     steps:
-      - name: 🍏 Set up Node.js version
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20.x"
-
       - name: ⬇️ Download artifact from build job
         uses: actions/download-artifact@v4
         with:
@@ -78,7 +74,9 @@ jobs:
         with:
           inlineScript: |
             webapp_name="${{ secrets.AZURE_APP_SERVICE_NAME }}"
+            echo "Web App Name: $webapp_name"
             rg=$(az webapp list --query "[?name=='$webapp_name'].resourceGroup" --output tsv)
+            echo "Resource Group: $rg"
             
             if [ -z "$rg" ]; then
               echo "Resource group not found for web app $webapp_name"
@@ -98,7 +96,7 @@ jobs:
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ secrets.AZURE_APP_SERVICE_NAME }}
-          package: ${{ github.workspace }}/site-deploy/Nextjs-site.zip
+          package: ./Nextjs-site.zip
 
       - name: 🧹 Cleanup
-        run: rm ${{ github.workspace }}/site-deploy/Nextjs-site.zip
+        run: rm ./Nextjs-site.zip
